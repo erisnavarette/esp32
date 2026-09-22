@@ -1,0 +1,57 @@
+});
+
+client.on('reconnect', () => {
+  setStatus('connecting', 'Reconnecting…');
+  setControlsEnabled(false);
+});
+
+client.on('close', () => {
+  setStatus(null, 'Disconnected');
+  setControlsEnabled(false);
+  connectBtn.textContent = 'Connect';
+  connectBtn.disabled = false;
+  connectFields.style.display = '';
+});
+
+client.on('error', (err) => {
+  setStatus('error', 'Connection error — check credentials');
+  setControlsEnabled(false);
+  connectBtn.textContent = 'Connect';
+  connectBtn.disabled = false;
+  connectFields.style.display = '';
+});
+}
+
+function disconnect() {
+if (client) {
+  client.end(true);
+  client = null;
+}
+setStatus(null, 'Not connected');
+setControlsEnabled(false);
+connectBtn.textContent = 'Connect';
+connectFields.style.display = '';
+}
+
+connectBtn.addEventListener('click', () => {
+if (client && client.connected) {
+  disconnect();
+} else {
+  connect();
+}
+});
+
+function send(payload) {
+if (!client || !client.connected) return;
+client.publish(currentTopic, payload);
+lastSent.textContent = 'Sent "' + payload + '" · ' + new Date().toLocaleTimeString();
+}
+
+buttons.ON.addEventListener('click', () => send('ON'));
+buttons.OFF.addEventListener('click', () => send('OFF'));
+buttons.FLASH3.addEventListener('click', () => send('FLASH3'));
+buttons.FLASH5.addEventListener('click', () => send('FLASH5'));
+})();
+</script>
+</body>
+</html>
