@@ -1,56 +1,409 @@
-});
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>elio/led — remote panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1013;
+    --panel: #14181d;
+    --panel-raised: #1a1f26;
+    --line: #262c34;
+    --text: #e9ebee;
+    --muted: #7d8791;
+    --amber: #ffb648;
+    --amber-dim: #4a3a1e;
+    --blue: #4fc3f7;
+    --red: #ff6b6b;
+    --green: #5ad683;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: inherit; }
 
-client.on('reconnect', () => {
-  setStatus('connecting', 'Reconnecting…');
-  setControlsEnabled(false);
-});
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
 
-client.on('close', () => {
-  setStatus(null, 'Disconnected');
-  setControlsEnabled(false);
-  connectBtn.textContent = 'Connect';
-  connectBtn.disabled = false;
-  connectFields.style.display = '';
-});
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
 
-client.on('error', (err) => {
-  setStatus('error', 'Connection error — check credentials');
-  setControlsEnabled(false);
-  connectBtn.textContent = 'Connect';
-  connectBtn.disabled = false;
-  connectFields.style.display = '';
-});
-}
+  .rig {
+    width: 100%;
+    max-width: 420px;
+  }
 
-function disconnect() {
-if (client) {
-  client.end(true);
-  client = null;
-}
-setStatus(null, 'Not connected');
-setControlsEnabled(false);
-connectBtn.textContent = 'Connect';
-connectFields.style.display = '';
-}
+  .eyebrow {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    margin: 0 0 4px 2px;
+  }
 
-connectBtn.addEventListener('click', () => {
-if (client && client.connected) {
-  disconnect();
-} else {
-  connect();
-}
-});
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 20px 2px;
+    letter-spacing: -0.01em;
+  }
 
-function send(payload) {
-if (!client || !client.connected) return;
-client.publish(currentTopic, payload);
-lastSent.textContent = 'Sent "' + payload + '" · ' + new Date().toLocaleTimeString();
-}
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
 
-buttons.ON.addEventListener('click', () => send('ON'));
-buttons.OFF.addEventListener('click', () => send('OFF'));
-buttons.FLASH3.addEventListener('click', () => send('FLASH3'));
-buttons.FLASH5.addEventListener('click', () => send('FLASH5'));
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .dot.connecting { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: pulse 1s infinite; }
+  .dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.error { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  .status-text {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .field {
+    margin-top: 14px;
+  }
+  .field label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .field input:focus {
+    outline: none;
+    border-color: var(--blue);
+  }
+
+  .row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  button.connect-btn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--panel-raised);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  button.connect-btn:hover { border-color: var(--blue); }
+  button.connect-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .ctrl {
+    position: relative;
+    padding: 22px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--panel-raised);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: transform 0.08s, border-color 0.15s, background 0.15s;
+  }
+  .ctrl:active { transform: scale(0.97); }
+  .ctrl:disabled { opacity: 0.35; cursor: default; }
+
+  .ctrl.on:not(:disabled):hover { border-color: var(--green); }
+  .ctrl.off:not(:disabled):hover { border-color: var(--red); }
+  .ctrl.flash:not(:disabled):hover { border-color: var(--amber); }
+
+  .ctrl .glyph {
+    display: block;
+    font-size: 20px;
+    margin-bottom: 6px;
+  }
+
+  .last-sent {
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    min-height: 16px;
+  }
+
+  .topic-tag {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--blue);
+    background: rgba(79,195,247,0.08);
+    border: 1px solid rgba(79,195,247,0.25);
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot.connecting { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="rig">
+    <p class="eyebrow">HiveMQ Cloud · WebSockets</p>
+    <h1>LED remote panel</h1>
+    <div class="topic-tag" id="topicTag">elio/led/set</div>
+
+    <div class="panel">
+      <div class="status-row">
+        <span class="dot" id="statusDot"></span>
+        <span class="status-text" id="statusText">Not connected</span>
+      </div>
+
+      <div id="connectFields">
+        <div class="field">
+          <label for="brokerUrl">Broker host</label>
+          <input id="brokerUrl" value="2876e3563d4f44cf98949ed2e3b98040.s1.eu.hivemq.cloud" />
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="brokerPort">WS port</label>
+            <input id="brokerPort" value="8884" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="topic">Topic</label>
+            <input id="topic" value="elio/led/set" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="mqttUser">Username</label>
+          <input id="mqttUser" placeholder="your HiveMQ username" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="mqttPass">Password</label>
+          <input id="mqttPass" type="password" placeholder="your HiveMQ password" autocomplete="off" />
+        </div>
+      </div>
+
+      <button class="connect-btn" id="connectBtn">Connect</button>
+    </div>
+
+    <div class="controls">
+      <button class="ctrl on" id="btnOn" disabled>
+        <span class="glyph">●</span>ON
+      </button>
+      <button class="ctrl off" id="btnOff" disabled>
+        <span class="glyph">○</span>OFF
+      </button>
+      <button class="ctrl flash" id="btnFlash3" disabled>
+        <span class="glyph">⚡×3</span>FLASH 3
+      </button>
+      <button class="ctrl flash" id="btnFlash5" disabled>
+        <span class="glyph">⚡×5</span>FLASH 5
+      </button>
+    </div>
+
+    <p class="last-sent" id="lastSent"></p>
+  </div>
+
+<script>
+(function () {
+  const dot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const connectBtn = document.getElementById('connectBtn');
+  const connectFields = document.getElementById('connectFields');
+  const topicTag = document.getElementById('topicTag');
+  const lastSent = document.getElementById('lastSent');
+
+  const brokerUrlInput = document.getElementById('brokerUrl');
+  const brokerPortInput = document.getElementById('brokerPort');
+  const topicInput = document.getElementById('topic');
+  const userInput = document.getElementById('mqttUser');
+  const passInput = document.getElementById('mqttPass');
+
+  const buttons = {
+    ON: document.getElementById('btnOn'),
+    OFF: document.getElementById('btnOff'),
+    FLASH3: document.getElementById('btnFlash3'),
+    FLASH5: document.getElementById('btnFlash5'),
+  };
+
+  let client = null;
+  let currentTopic = topicInput.value;
+
+  // Remember non-secret fields for convenience. Password is kept in memory only.
+  try {
+    const saved = JSON.parse(localStorage.getItem('ledPanelPrefs') || '{}');
+    if (saved.brokerUrl) brokerUrlInput.value = saved.brokerUrl;
+    if (saved.brokerPort) brokerPortInput.value = saved.brokerPort;
+    if (saved.topic) topicInput.value = saved.topic;
+    if (saved.user) userInput.value = saved.user;
+  } catch (e) { /* ignore */ }
+
+  function savePrefs() {
+    try {
+      localStorage.setItem('ledPanelPrefs', JSON.stringify({
+        brokerUrl: brokerUrlInput.value.trim(),
+        brokerPort: brokerPortInput.value.trim(),
+        topic: topicInput.value.trim(),
+        user: userInput.value.trim(),
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function setStatus(state, text) {
+    dot.className = 'dot' + (state ? ' ' + state : '');
+    statusText.textContent = text;
+  }
+
+  function setControlsEnabled(enabled) {
+    Object.values(buttons).forEach(b => b.disabled = !enabled);
+  }
+
+  function connect() {
+    const host = brokerUrlInput.value.trim();
+    const port = brokerPortInput.value.trim();
+    const user = userInput.value.trim();
+    const pass = passInput.value;
+    currentTopic = topicInput.value.trim() || 'elio/led/set';
+    topicTag.textContent = currentTopic;
+
+    if (!host || !port) {
+      setStatus('error', 'Enter broker host and port');
+      return;
+    }
+
+    savePrefs();
+
+    const url = 'wss://' + host + ':' + port + '/mqtt';
+    setStatus('connecting', 'Connecting…');
+    connectBtn.disabled = true;
+
+    try {
+      client = mqtt.connect(url, {
+        username: user || undefined,
+        password: pass || undefined,
+        clientId: 'webpanel-' + Math.random().toString(16).slice(2, 10),
+        reconnectPeriod: 3000,
+        connectTimeout: 8000,
+      });
+    } catch (err) {
+      setStatus('error', 'Could not start connection');
+      connectBtn.disabled = false;
+      return;
+    }
+
+    client.on('connect', () => {
+      setStatus('connected', 'Connected to ' + host);
+      setControlsEnabled(true);
+      connectBtn.textContent = 'Disconnect';
+      connectBtn.disabled = false;
+      connectFields.style.display = 'none';
+    });
+
+    client.on('reconnect', () => {
+      setStatus('connecting', 'Reconnecting…');
+      setControlsEnabled(false);
+    });
+
+    client.on('close', () => {
+      setStatus(null, 'Disconnected');
+      setControlsEnabled(false);
+      connectBtn.textContent = 'Connect';
+      connectBtn.disabled = false;
+      connectFields.style.display = '';
+    });
+
+    client.on('error', (err) => {
+      setStatus('error', 'Connection error — check credentials');
+      setControlsEnabled(false);
+      connectBtn.textContent = 'Connect';
+      connectBtn.disabled = false;
+      connectFields.style.display = '';
+    });
+  }
+
+  function disconnect() {
+    if (client) {
+      client.end(true);
+      client = null;
+    }
+    setStatus(null, 'Not connected');
+    setControlsEnabled(false);
+    connectBtn.textContent = 'Connect';
+    connectFields.style.display = '';
+  }
+
+  connectBtn.addEventListener('click', () => {
+    if (client && client.connected) {
+      disconnect();
+    } else {
+      connect();
+    }
+  });
+
+  function send(payload) {
+    if (!client || !client.connected) return;
+    client.publish(currentTopic, payload);
+    lastSent.textContent = 'Sent "' + payload + '" · ' + new Date().toLocaleTimeString();
+  }
+
+  buttons.ON.addEventListener('click', () => send('ON'));
+  buttons.OFF.addEventListener('click', () => send('OFF'));
+  buttons.FLASH3.addEventListener('click', () => send('FLASH3'));
+  buttons.FLASH5.addEventListener('click', () => send('FLASH5'));
 })();
 </script>
 </body>
